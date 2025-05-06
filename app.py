@@ -1,5 +1,5 @@
 import streamlit as st
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import io
@@ -10,7 +10,7 @@ import json
 
 # Load environment variables
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 st.set_page_config(page_title="AI Chatbot", layout="wide")
 st.title("🤖 GPT-4o Chatbot")
@@ -65,7 +65,7 @@ def voice_input_button():
 def display_image(file):
     if file is not None and file.type in ["image/jpeg", "image/png", "image/jpg"]:
         image = Image.open(file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.image(image, caption="Uploaded Image", use_container_width=True)
 
 # Handle text input
 user_input = st.text_input("💬 Your message:")
@@ -99,12 +99,13 @@ if send_button and user_input:
 
     # Get GPT-4o response
     try:
-        completion = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "system", "content": "You're a helpful AI assistant."}] +
                      st.session_state.messages
         )
-        bot_response = completion.choices[0].message.content
+        bot_response = response.choices[0].message.content
+
     except Exception as e:
         bot_response = f"[OpenAI API error: {e}]"
 
