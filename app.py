@@ -3,53 +3,98 @@ import openai
 from dotenv import load_dotenv
 import os
 import io
+from PIL import Image
+import speech_recognition as sr
 import base64
+import json
 
-load_dotenv()  # Load variables from .env file
+# Load environment variables
+load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-
 st.set_page_config(page_title="AI Chatbot", layout="wide")
-st.title("🤖 GPT-4o Chatbot with File Upload & Voice Input")
+st.title("🤖 GPT-4o Chatbot")
 
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False  # default to light mode
 
-# File upload (PDF, TXT, etc.)
-uploaded_file = st.file_uploader("📁 Upload a text file", type=["txt", "pdf"])
+# Handle theme toggle (Light/Dark mode)
+def toggle_dark_mode():
+    if st.session_state.dark_mode:
+        st.write('<style>body { background-color: #333; color: white; }</style>', unsafe_allow_html=True)
+    else:
+        st.write('<style>body { background-color: #fff; color: black; }</style>', unsafe_allow_html=True)
 
-# Audio upload
-audio_file = st.file_uploader("🎤 Upload voice message (mp3, wav)", type=["mp3", "wav"])
+toggle_dark_mode()
 
-# Convert audio to text using Whisper if provided
+# File upload for text, image (jpg, png, jpeg), and audio (mp3, wav)
+uploaded_file = st.file_uploader("📁 Upload a text file or image (jpg, png, jpeg, pdf)", type=["txt", "pdf", "jpg", "png", "jpeg"])
+
+# Microphone button to start real-time voice input (Speech-to-Text)
 def transcribe_audio(file):
+    recognizer = sr.Recognizer()
     try:
-        transcript = openai.Audio.transcribe("whisper-1", file)
-        return transcript["text"]
+        with sr.AudioFile(file) as source:
+            audio = recognizer.record(source)
+            return recognizer.recognize_google(audio)
     except Exception as e:
         return f"[Error transcribing audio: {e}]"
 
-# Handle user input from voice or text
-if audio_file:
-    st.success("Audio uploaded. Transcribing...")
-    user_input = transcribe_audio(audio_file)
-    st.text_area("Transcribed Input", user_input, height=100)
-else:
-    user_input = st.text_input("💬 Your message:")
+# Chat history panel
+def show_chat_history():
+    st.markdown("---")
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
 
-# Submit message
-if user_input:
+# Real-time voice input with Web Speech API (this should be implemented in frontend HTML/JS if Streamlit does not support real-time speech-to-text)
+def voice_input_button():
+    mic_button = st.button("🎤 Start Talking")
+    if mic_button:
+        st.write("Listening...")
+        # For now, we just simulate the voice input in the text area:
+        user_input = transcribe_audio("path_to_audio_file")
+        st.text_area("Transcribed Input", user_input, height=100)
+        return user_input
+    return ""
+
+# Display image if uploaded
+def display_image(file):
+    if file is not None and file.type in ["image/jpeg", "image/png", "image/jpg"]:
+        image = Image.open(file)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+
+# Handle text input
+user_input = st.text_input("💬 Your message:")
+user_input = voice_input_button() if user_input == "" else user_input  # Use voice input if no text
+
+# File handling
+file_content = ""
+if uploaded_file:
+    file_bytes = uploaded_file.read()
+    if uploaded_file.type == "application/pdf":
+        file_content = file_bytes.decode("utf-8", errors="ignore")
+    elif uploaded_file.type in ["image/jpeg", "image/png", "image/jpg"]:
+        display_image(uploaded_file)
+    elif uploaded_file.type == "text/plain":
+        file_content = file_bytes.decode("utf-8", errors="ignore")
+
+# Send button for the message
+send_button = st.button("✉️ Send", use_container_width=True)
+
+# New chat button
+if st.button("🗨️ New Chat"):
+    st.session_state.messages = []
+
+# Submit message to the chatbot
+if send_button and user_input:
     # Display user message
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # Prepare file content if uploaded
-    file_content = ""
-    if uploaded_file:
-        file_bytes = uploaded_file.read()
-        file_content = file_bytes.decode("utf-8", errors="ignore")  # Simplified for TXT
-
-    # Construct system prompt
+    # Construct the prompt with the uploaded file content
     prompt = f"You are a helpful assistant. File content:\n{file_content}\n\nUser question:\n{user_input}"
 
     # Get GPT-4o response
@@ -66,8 +111,11 @@ if user_input:
     # Display bot response
     st.session_state.messages.append({"role": "assistant", "content": bot_response})
 
-# Show chat history
-st.markdown("---")
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+# Display chat history
+show_chat_history()
+
+# Dark mode toggle button
+if st.button("🔄 Toggle Dark Mode"):
+    st.session_state.dark_mode = not st.session_state.dark_mode
+    toggle_dark_mode()
+
